@@ -1,0 +1,323 @@
+kibot:
+  version: 1
+
+global:
+  out_dir: "../production/%f"
+  date_format: "%Y-%m-%d"
+
+# ─────────────────────────────────────────────────────────────
+# Preflight Checks (DRC, ERC)
+# ─────────────────────────────────────────────────────────────
+preflight:
+  drc:
+    dont_stop: true
+    format: HTML,RPT,JSON,CSV
+  erc:
+    dont_stop: true
+    format: HTML,RPT,JSON,CSV
+
+# ─────────────────────────────────────────────────────────────
+# Outputs
+# ─────────────────────────────────────────────────────────────
+outputs:
+
+# ── Navigation & Documentation ─────────────────────────────
+  - name: "Navigation results"
+    comment: "Create navigation results page"
+    type: navigate_results
+    dir: overview
+
+  - name: "Download datasheets"
+    comment: "Download component datasheets"
+    type: download_datasheets
+    dir: docs/datasheets
+    category: documentation
+    options:
+      repeated: false
+      link_repeated: true
+
+  - name: "Generate IBOM"
+    comment: "Interactive Bill of Materials"
+    type: ibom
+    dir: docs
+    category: documentation
+
+  - name: "Print Schematics"
+    comment: "Schematic in PDF"
+    type: pdf_sch_print
+    dir: docs
+    category: documentation
+    options:
+      output: Schematic.%x
+
+# ── Board Views / Visuals ──────────────────────────────────
+  - name: "Board Top"
+    comment: "Top layer view"
+    type: pcbdraw
+    dir: docs/images
+    category: documentation
+    options:
+      format: png
+      bottom: false
+      output: "PCB_Top.%x"
+
+  - name: "Board Bottom"
+    comment: "Bottom layer view"
+    type: pcbdraw
+    dir: docs/images
+    category: documentation
+    options:
+      format: png
+      bottom: true
+      output: "PCB_Bottom.%x"
+
+  - name: "3D rendering"
+    comment: "Ray-traced 3D render"
+    type: render_3d
+    dir: docs/images
+    category: documentation
+    options:
+      ray_tracing: true
+      output: "PCB_Rendering.%x"
+
+# ── Board Prints ───────────────────────────────────────────
+  - name: "PCB Specifications"
+    comment: "Board specs drawing"
+    type: pcb_print
+    dir: docs
+    category: production
+    options:
+      output: "PCB.pdf"
+      format: PDF
+      pages:
+        - layers:
+            - Edge.Cuts
+            - User.1
+          sheet: "PCB Specifications"
+          monochrome: true
+
+  - name: "Ref Top"
+    comment: "Reference Top View (FAB layer)"
+    type: pcb_print
+    dir: docs
+    category: purchasing
+    options:
+      output: "Ref_Top.%x"
+      format: PDF
+      pages:
+        - layers:
+            - Edge.Cuts
+            - F.Fab
+          sheet: "Ref-Top"
+          monochrome: true
+
+  - name: "Ref Bottom"
+    comment: "Reference Bottom View (FAB layer)"
+    type: pcb_print
+    dir: docs
+    category: purchasing
+    options:
+      output: "Ref_Bot.%x"
+      format: PDF
+      pages:
+        - layers:
+            - Edge.Cuts
+            - B.Fab
+          sheet: "Ref-Bottom"
+          monochrome: true
+          mirror: true
+
+# ── BOMs ────────────────────────────────────────────────────
+  - name: "KiBoM Netlist"
+    comment: "Netlist for KiBoM (must be in project dir)"
+    type: netlist
+    dir: ../../electronics/%f/
+    options:
+      format: kicadxml
+      output: "%f.xml"
+
+  - name: "KiBOM"
+    comment: "Grouped BOM using KiBoM"
+    type: kibom
+    dir: bom
+    category: purchasing
+    options:
+      format: HTML
+      output: "%f-%i%v.%x"
+      variant: base
+      number: 1
+      conf:
+        fit_field: Config
+        group_fields:
+          - Value
+          - Footprint
+        number_rows: true
+        ignore_dnf: true
+        html_generate_dnf: true
+
+  # - name: "BOM for PCBWay"
+  #   comment: "XLSX BOM customized for PCBWay"
+  #   type: bom
+  #   dir: docs
+  #   category: purchasing
+  #   options:
+  #     format: XLSX
+  #     output: "BOM_PCBWay.%x"
+  #     ref_separator: ','
+  #     count_smd_tht: true
+  #     columns:
+  #       - field: Row
+  #         name: Item
+  #       - field: References
+  #         name: Ref Des
+  #       - field: Build Quantity
+  #         name: Quantity
+  #       - field: manf
+  #         name: Manufacturer
+  #       - field: digikey#
+  #         name: Mfg Part#
+  #       - field: Value
+  #         name: Description / Value
+  #       - field: Footprint
+  #         name: Package
+  #       - field: Footprint Type
+  #         name: Type
+  #       - field: Footprint Side
+  #         name: Side
+  #     xlsx:
+  #       kicost: true
+  #       specs: true
+  #       title: "%f BOM"
+  #       hide_stats_info: false
+  #       logo_scale: 0.5
+  #       kicost_config: kicost_config.yaml
+  #       kicost_api_disable:
+  #         - KitSpace
+
+# ── Manufacturing Files ───────────────────────────────────
+  - name: "Generate Drill"
+    comment: "Excellon drill files"
+    type: excellon
+    dir: gerber
+    category: production
+    options:
+      metric_units: true
+      mirror_y_axis: false
+      pth_and_npth_single_file: false
+      left_digits: 0
+      minimal_header: false
+      use_aux_axis_as_origin: true
+      route_mode_for_oval_holes: true
+      zeros_format: "DECIMAL_FORMAT"
+
+  - name: "Generate Gerbers"
+    comment: "Gerber files for fab"
+    type: gerber
+    dir: gerber
+    category: production
+    options:
+      exclude_edge_layer: false
+      exclude_pads_from_silkscreen: false
+      plot_sheet_reference: false
+      plot_footprint_refs: true
+      plot_footprint_values: true
+      force_plot_invisible_refs_vals: false
+      tent_vias: true
+      line_width: 0.15
+      use_aux_axis_as_origin: false
+      subtract_mask_from_silk: true
+      use_protel_extensions: false
+      gerber_precision: 4.5
+      create_gerber_job_file: true
+      use_gerber_x2_attributes: true
+      use_gerber_net_attributes: false
+    layers:
+      - layer: F.Cu
+        suffix: F_Cu
+        description: Front copper
+      - layer: F.Mask
+        suffix: F_Mask
+        description: Front soldermask
+      - layer: B.Cu
+        suffix: B_Cu
+        description: Bottom copper
+      - layer: B.Mask
+        suffix: B_Mask
+        description: Bottom soldermask
+      - layer: In1.Cu
+        suffix: In1_Cu
+        description: Inner layer 1
+      - layer: In2.Cu
+        suffix: In2_Cu
+        description: Inner layer 2
+      - layer: F.Silkscreen
+        suffix: F_Silkscreen
+        description: Front silkscreen
+      - layer: B.Silkscreen
+        suffix: B_Silkscreen
+        description: Bottom silkscreen
+      - layer: F.Paste
+        suffix: F_Paste
+        description: Front paste
+      - layer: B.Paste
+        suffix: B_Paste
+        description: Bottom paste
+      - layer: Edge.Cuts
+        suffix: Edge_Cuts
+        description: Board outline
+      - layer: User.Drawings
+        suffix: User_Drawings
+        description: User drawings
+      - layer: User.Comments
+        suffix: User_Comments
+        description: User comments
+      - layer: F.Courtyard
+        suffix: F_Courtyard
+        description: Front courtyard
+      - layer: B.Courtyard
+        suffix: B_Courtyard
+        description: Bottom courtyard
+      - layer: F.Fab
+        suffix: F_Fab
+        description: Front fab layer
+      - layer: B.Fab
+        suffix: B_Fab
+        description: Bottom fab layer
+
+  - name: "Pick & Place"
+    comment: "Centroid (Pick & Place)"
+    type: position
+    dir: centroid
+    category: production
+    options:
+      format: ASCII
+      only_smd: false
+
+  - name: "ZIP Gerber"
+    comment: "Compress all Gerbers"
+    type: compress
+    dir: .
+    category: purchasing
+    options:
+      format: ZIP
+      files:
+        - source: gerber/**
+      output: "Gerber_%D.%x"
+
+  - name: "ZIP Centroid"
+    comment: "Compress Pick & Place"
+    type: compress
+    dir: .
+    category: purchasing
+    options:
+      format: ZIP
+      files:
+        - source: centroid/**
+      output: "Centroid_%D.%x"
+
+# ── Mechanical ─────────────────────────────────────────────
+  - name: "Step file"
+    comment: "3D STEP file generation"
+    type: export_3d
+    dir: cad
+    category: mechanical

@@ -1,0 +1,115 @@
+name: Production
+
+on:
+  workflow_dispatch:
+  pull_request_target:
+    types: [ closed ]
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    name: Generate Production Data
+    runs-on: ubuntu-latest
+    container: ghcr.io/inti-cmnb/kicad9_auto_full:latest
+
+    strategy:
+      matrix:
+        device_type: [ view_base, view_screen ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: .
+          submodules: recursive
+
+      - name: Initialize directories
+        run: |
+          mkdir -p log
+          mkdir -p docs/images
+
+      - name: Generate files with KiBot
+        run: |
+          cd electronics/${{ matrix.device_type }}
+          kibot -vvvv \
+            -c ${{ matrix.device_type }}.kibot.yaml \
+            -d ../../production/${{ matrix.device_type }} \
+            2> ../../log/kibot.log
+
+      - name: Clean up temporary files
+        run: |
+          cd production/${{ matrix.device_type }}
+          find . -type f \( -iname "*.log" -o -iname "*.ogv" \) -delete
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Logs-${{ matrix.device_type }}
+          path: log
+
+      # Upload the entire production folder as an artifact
+      # e.g. Production-view_base or Production-view_screen
+      - name: Upload full production folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: Production-${{ matrix.device_type }}
+          path: production
+          if-no-files-found: ignore
+
+  commit-renders:
+    name: Commit Final Rendered Images
+    needs: generate
+    runs-on: ubuntu-latest
+
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.merged == true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          # This will download *every* artifact from the 'generate' job
+          path: aggregator_artifacts
+
+      - name: Commit final PCB render images
+        run: |
+          # aggregator_artifacts will contain:
+          #   Production-view_base/view_base/... 
+          #   Production-view_screen/view_screen/...
+
+          mkdir -p docs/images
+
+          # Copy the final rendering images to a standard location
+          # (So we don't push all of production, just the final .png)
+          cp aggregator_artifacts/Production-view_base/view_base/docs/images/PCB_Rendering.png \
+             docs/images/view_base_Complete.png || true
+
+          cp aggregator_artifacts/Production-view_screen/view_screen/docs/images/PCB_Rendering.png \
+             docs/images/view_screen_Complete.png || true
+
+          TARGET_BRANCH="${GITHUB_BASE_REF:-${GITHUB_REF_NAME}}"
+          echo "Using target branch: $TARGET_BRANCH"
+
+          # Configure Git
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Pull latest changes to avoid conflicts
+          git pull --rebase origin "$TARGET_BRANCH"
+
+          # Copy, add, commit
+          git add docs/images/*_Complete.png
+          git commit -m "Add rendered images for devices from CI/CD action" || echo "Nothing to commit"
+
+          # Push
+          git remote set-url origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
+          git push origin "$TARGET_BRANCH"
