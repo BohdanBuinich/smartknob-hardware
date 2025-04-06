@@ -1,0 +1,146 @@
+name: Diff
+
+on:
+  workflow_dispatch:
+  pull_request:
+  pull_request_target:
+    types: [ closed ]
+
+env:
+  DEVICE_BASE: view_base
+  DEVICE_SCREEN: view_screen
+
+jobs:
+  generate:
+    name: Generate Diff Data
+    runs-on: ubuntu-latest
+    container: ghcr.io/inti-cmnb/kicad9_auto_full:latest
+
+    steps:
+      - name: Checkout modified branch
+        uses: actions/checkout@v4
+        with:
+          # Pull the branch being compared (PR branch)
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          path: modified
+          submodules: recursive
+
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          # Pull the 'main' branch for comparison
+          ref: main
+          path: original
+          submodules: recursive
+
+      - name: Extract branch name
+        id: extract_branch
+        run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate diffs for all devices
+        run: |
+          for device in "${DEVICE_BASE}" "${DEVICE_SCREEN}"; do
+            echo "Generating schematic diff for $device..."
+            kicad-diff.py \
+              original/electronics/$device/$device.kicad_sch \
+              modified/electronics/$device/$device.kicad_sch \
+              --only_different \
+              --diff_mode red_green \
+              --all_pages \
+              --output_dir diff-schematics-$device \
+              --no_reader \
+              --keep_pngs
+
+            echo "Generating layout diff for $device..."
+            kicad-diff.py \
+              original/electronics/$device/$device.kicad_pcb \
+              modified/electronics/$device/$device.kicad_pcb \
+              --only_different \
+              --diff_mode red_green \
+              --all_pages \
+              --output_dir diff-layout-$device \
+              --no_reader \
+              --keep_pngs
+          done
+
+      - name: Upload all diffs
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-diffs
+          path: |
+            diff-schematics-*
+            diff-layout-*
+          if-no-files-found: ignore
+
+      - name: Copy schematic diffs into repo cache
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          cd modified
+          rm -rf .github/_diff_cache/diff-schematics-*
+          cp -r ../diff-schematics-* .github/_diff_cache/
+
+      - name: Commit schematic diff images
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          cd modified
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/_diff_cache/
+          git commit -m "📘 Add schematic diff previews for PR #${{ github.event.pull_request.number }}"
+          git remote set-url origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
+          git push origin "${{ steps.extract_branch.outputs.branch }}"
+
+      - name: Create PR comment with linked images (or fallback)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          mkdir -p comment_out
+          comment_file="comment_out/comment.md"
+          echo "### 📘 KiCad Schematic Diffs" > "$comment_file"
+          echo "" >> "$comment_file"
+
+          skip_diff=true
+          REPO="${{ github.repository }}"
+          BRANCH="${{ github.head_ref || github.ref_name }}"
+
+          for device in "${DEVICE_BASE}" "${DEVICE_SCREEN}"; do
+            folder="diff-schematics-${device}"
+            no_diff_file="modified/.github/_diff_cache/$folder/no-diff.png"
+
+            echo "#### 🧩 Device: \`${device}\`" >> "$comment_file"
+            echo "" >> "$comment_file"
+
+            if [ -f "$no_diff_file" ]; then
+              echo "_✅ No schematic changes detected._" >> "$comment_file"
+              echo "" >> "$comment_file"
+            else
+              # List .png files; store them in a variable
+              png_files=$(ls "modified/.github/_diff_cache/$folder"/*.png 2>/dev/null || true)
+              if [ -n "$png_files" ]; then
+                skip_diff=false
+                for f in $png_files; do
+                  name=$(basename "$f")
+                  echo "![${name}](https://github.com/${REPO}/raw/${BRANCH}/.github/_diff_cache/$folder/$name)" >> "$comment_file"
+                  echo "" >> "$comment_file"
+                done
+              else
+                echo "_⚠️ No PNGs found in \`${folder}\`._" >> "$comment_file"
+                echo "" >> "$comment_file"
+              fi
+            fi
+
+            echo "---" >> "$comment_file"
+            echo "" >> "$comment_file"
+          done
+
+          if [ "$skip_diff" = true ]; then
+            echo "_🎉 No schematic changes in this PR._" >> "$comment_file"
+          else
+            echo "_🔗 Full image set is available in the uploaded artifacts._" >> "$comment_file"
+          fi
+
+      - name: Post comment to PR
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-path: comment_out/comment.md

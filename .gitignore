@@ -1,37 +1,75 @@
-# KiCAD files
-*.000
-*.bak
-*.bck
+# ---------------------
+# KiCad project backups and autosaves (redundancy for safety)
+# ---------------------
+*.tmp
+*.save
+*.bak~
+
+# ---------------------
+# KiCad simulation files
+# ---------------------
+*.cir
+*.raw
+*.log
+*.plt
+*.ps
+
+# ---------------------
+# Gerber and manufacturing output
+# ---------------------
+*.gbr
+*.gtl
+*.gbl
+*.gts
+*.gbs
+*.gto
+*.gbo
+*.drl
+*.zip  # Often generated for fabrication
+*.fab  # Fabrication file
+*.gko  # Outline
+*.map  # Drill map
+*.csv  # BOMs or drill files
+
+# ---------------------
+# KiCad 6 and newer schematic & symbol cache
+# ---------------------
+*-cache.lib
+*-rescue.*
+
+# ---------------------
+# Symbol and footprint libraries (if generated locally)
+# ---------------------
+*.mod
+*.lib
+*.dcm
+.sym
+
+# ---------------------
+# Project-specific user settings
+# ---------------------
+*.kicad_sch-bak
+*.kicad_sym-bak
 *.kicad_pcb-bak
-*.sch-bak
-*.net
-*.dsn
-fp-info-cache
-_autosave*.kicad_pcb
-*.kicad_prl
-electronics/*/*backups
-electronics*/*/*backups
 
-# Proprietary 3d model (for KiCAD)
-**/proprietary/*.stp
-**/proprietary/*.step
+# Windows junk
+Thumbs.db
+ehthumbs.db
 
-# PlatformIO
-.pio/
-
-# General build outputs
-build/
-
-# Apple/Macintosh
+# ---------------------
+# Linux/Unix swap & lock files
+# ---------------------
+*.swp
+*.swo
+*.lock
 .DS_Store
 
-# VSCode
+# ---------------------
+# VSCode Configuration
+# ---------------------
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
-#!.vscode/launch.json
+!.vscode/launch.json
 !.vscode/extensions.json
 !.vscode/*.code-snippets
-
-__pycache__
-

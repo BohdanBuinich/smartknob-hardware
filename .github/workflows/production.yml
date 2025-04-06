@@ -1,0 +1,79 @@
+name: Production
+
+on:
+  workflow_dispatch:
+  pull_request_target:
+    types: [ closed ]
+
+jobs:
+  generate:
+    name: Generate Production Data
+    runs-on: ubuntu-latest
+    container: ghcr.io/inti-cmnb/kicad9_auto_full:latest
+
+    permissions:
+      contents: write
+
+    strategy:
+      matrix:
+        device_type: [ view_base, view_screen ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: .
+          submodules: recursive
+
+      #      - name: Cache KiCost data
+      #        uses: actions/cache@v4
+      #        with:
+      #          path: ~/kicost_cache
+      #          key: kicost_cache
+
+      - name: Extract branch name
+        id: extract_branch
+        run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> "$GITHUB_OUTPUT"
+
+      - name: Initialize directories
+        run: |
+          mkdir -p log
+          mkdir -p docs/images
+
+      - name: Generate files with KiBot
+        run: |
+          cd electronics/${{ matrix.device_type }}
+          kibot -vvvv \
+            -c ${{ matrix.device_type }}.kibot.yaml \
+            -d ../../production/${{ matrix.device_type }} \
+            2> ../../log/kibot.log
+
+      - name: Clean up temporary files
+        run: |
+          cd production/${{ matrix.device_type }}
+          find . -type f \( -iname "*.log" -o -iname "*.ogv" \) -delete
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Logs-${{ matrix.device_type }}
+          path: log
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: Production-${{ matrix.device_type }}
+          path: production
+          if-no-files-found: ignore
+
+      - name: Commit PCB render image
+        if: ${{ github.event.pull_request.merged == true }}
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          cp production/${{ matrix.device_type }}/docs/images/PCB_Rendering.png docs/images/${{ matrix.device_type }}_Complete.png
+          git add docs/images/${{ matrix.device_type }}_Complete.png
+          git commit -m "Add rendered image for ${{ matrix.device_type }} from CI/CD action"
+          git remote set-url origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
+          git push origin "${{ github.base_ref }}"
