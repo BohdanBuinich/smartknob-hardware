@@ -8309,7 +8309,7 @@
 		)
 		(uuid "c7db4903-f95a-49f5-bcce-c52f0ca8defc")
 	)
-	(text "LCD CONNECTOR"
+	(text "LCD CONNECTOR - modification bla bla"
 		(exclude_from_sim no)
 		(at 307.975 194.31 0)
 		(effects
